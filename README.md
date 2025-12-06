@@ -4,3 +4,5 @@ Films (recommandations/conseils, listing etc.)
 
 imbd dataset : 
 https://developer.imdb.com/non-commercial-datasets/
+
+Stocker la totalité des .tsv.gz dans un dossier "data" au root du projet.
