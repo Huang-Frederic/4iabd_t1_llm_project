@@ -49,17 +49,54 @@ movies.to_csv('movies_filtered.csv', index=False)
 
 import pandas as pd
 from tqdm import tqdm
+import random
 
 movies = pd.read_parquet('movies_filtered.parquet')
 corpus_texts = []
 
 templates = [
-    "{title} est un film {genres} sorti en {year}. Avec {actors}, il obtient une note de {rating}/10 sur IMDb.\n\n",
-    "Film {genres} de {year}, {title} met en scène {actors}. Note IMDb: {rating}/10 ({votes} votes).\n\n",
-    "{title} ({year}) - {genres}. Acteurs principaux: {actors}. Score: {rating}/10.\n\n",
-    "En {year}, {title} a été réalisé avec {actors}. Ce film {genres} a une note de {rating} sur IMDb.\n\n",
-    "Recommandation: {title} ({year}) - {genres}. Avec {actors}. IMDb: {rating}/10 ({votes} votes).\n\n",
+    # --- without scores ---
+    "{title} est un film {genres} sorti en {year}, porté par {actors}. Il mise surtout sur l’ambiance et le récit pour immerger le spectateur.\n\n",
+    "Sorti en {year}, {title} est un long-métrage {genres} avec {actors}. Le film se distingue par son ton particulier et sa mise en scène.\n\n",
+    "{title} ({year}) est un film {genres}. Avec {actors}, il propose une histoire qui marie émotions et divertissement.\n\n",
+    "Dans {title}, sorti en {year}, {actors} incarnent des personnages marquants. Ce film {genres} s’adresse surtout à ceux qui aiment les univers travaillés.\n\n",
+    "{title} est une production {genres} de {year}. Le casting, mené par {actors}, donne une identité forte au film.\n\n",
+    "{title}, sorti en {year}, appartient au genre {genres}. Il s’appuie sur {actors} pour donner vie à son récit.\n\n",
+    "Avec {actors} au casting, {title} propose une expérience {genres} sortie en {year}, centrée sur ses personnages et son atmosphère.\n\n",
+
+    # --- quality scores ---
+    "{title} est un film {genres} sorti en {year} avec {actors}. Il est généralement {appreciation}.\n\n",
+    "Avec {actors} en tête d’affiche, {title} propose un récit {genres} sorti en {year}. Le film est considéré comme {appreciation}.\n\n",
+    "{title} ({year}) appartient au genre {genres}. Grâce à {actors}, le film a laissé une impression {appreciation} sur son public.\n\n",
+    "Parmi les films {genres} sortis en {year}, {title} se distingue par son casting ({actors}) et un accueil {appreciation}.\n\n",
+    "{title} est souvent cité comme un exemple {genres} {appreciation}, notamment grâce à la performance de {actors}.\n\n",
+
+    # --- with score ---
+    "{title} est un film {genres} sorti en {year} avec {actors}. Sur IMDb, il bénéficie d’une note d’environ {rating}/10, signe d’un intérêt réel du public.\n\n",
+    "Film {genres} de {year}, {title} réunit {actors}. Sa note autour de {rating}/10 sur IMDb reflète des retours globalement positifs.\n\n",
+    "{title} ({year}) met en avant {actors} dans un récit {genres}. La communauté IMDb lui attribue une note proche de {rating}/10.\n\n",
+    "{title} est considéré comme un film {genres} solide. Sorti en {year} avec {actors}, il est évalué à environ {rating}/10 par les utilisateurs d’IMDb.\n\n",
+    "Parmi les films {genres}, {title} ({year}) avec {actors} obtient une note avoisinant {rating}/10 sur IMDb, ce qui traduit son accueil.\n\n",
+    "{title}, film {genres} sorti en {year}, met en scène {actors}. Sa note sur IMDb tourne autour de {rating}/10, ce qui reste cohérent avec les avis du public.\n\n",
+
+    # --- Recommendation ---
+    "Si tu cherches un film {genres} sorti en {year}, {title} avec {actors} est une option intéressante à considérer.\n\n",
+    "Pour une soirée {genres}, {title} ({year}) avec {actors} peut être un bon choix, souvent {appreciation} par ceux qui l’ont vu.\n\n",
 ]
+
+def rating_to_appreciation(rating):
+    try:
+        r = float(rating)
+    except (TypeError, ValueError):
+        return "accueilli de manière mitigée"
+    if r >= 8.0:
+        return "très apprécié du public"
+    elif r >= 7.0:
+        return "bien accueilli par les spectateurs"
+    elif r >= 6.0:
+        return "reçu de façon mitigée mais intéressant pour certains"
+    else:
+        return "plutôt mal reçu par le public"
 
 def format_genres(genres_str):
     if pd.isna(genres_str) or genres_str == 'Unknown':
@@ -92,20 +129,21 @@ for idx, row in tqdm(movies.iterrows(), total=len(movies)):
     actors = format_actors(row['actors'])
     rating = row['averageRating']
     votes = row['numVotes']
-    
-    import random
+    appreciation = rating_to_appreciation(rating)
+
     template = random.choice(templates)
-    
+
     text = template.format(
         title=title,
         year=year,
         genres=genres,
         actors=actors,
         rating=rating,
-        votes=f"{votes:,}"
+        votes=f"{votes:,}",
+        appreciation=appreciation,
     )
-    
     corpus_texts.append(text)
+
 
 print(f"{len(corpus_texts)} texts")
 
@@ -155,29 +193,63 @@ for _ in range(5000):
     actors = row["actors"]
     rating = row["averageRating"]
     votes = row["numVotes"]
+    appreciation = rating_to_appreciation(rating)
 
-    itype = random.choice(["reco", "resume", "acteurs"])
+    itype = random.choice(["reco", "resume", "actors", "popularity", "vibe"])
 
     if itype == "reco":
-        instruction = f"Recommande-moi un bon film {genres.lower()}."
+        instruction = random.choice([
+            f"Recommande-moi un bon film {genres.lower()} à regarder ce soir.",
+            f"Je cherche un film {genres.lower()} récent à voir. Tu me proposes quoi ?",
+            f"Si j’aime les films {genres.lower()}, quel film me conseilles-tu ?",
+        ])
         output = (
             f"Tu peux regarder {title} ({year}). "
             f"C’est un film {genres.lower()} avec {actors}. "
-            f"Il a une note de {rating}/10 sur IMDb avec {votes} votes."
+            f"Il est {appreciation}."
         )
 
     elif itype == "resume":
-        instruction = (
-            f"Donne un court descriptif d’un film {genres.lower()} sorti en {year}."
-        )
+        instruction = random.choice([
+            f"Donne un court descriptif d’un film {genres.lower()} sorti en {year}.",
+            f"Résume brièvement un film {genres.lower()} avec {actors}.",
+            f"Présente en quelques phrases un film {genres.lower()} marquant des années {year}.",
+        ])
         output = (
             f"{title} est un film {genres.lower()} sorti en {year} avec {actors}. "
-            f"Il est apprécié du public avec une note de {rating}/10."
+            f"Il raconte une histoire typique de ce genre et est {appreciation}."
         )
 
-    else: 
-        instruction = f"Quels sont les acteurs principaux du film {title} ?"
+    elif itype == "actors":
+        instruction = random.choice([
+            f"Quels sont les acteurs principaux du film {title} ?",
+            f"Qui joue dans le film {title} ({year}) ?",
+            f"Donne-moi les acteurs principaux de {title}.",
+        ])
         output = f"Les principaux acteurs de {title} ({year}) sont {actors}."
+
+    elif itype == "popularity":
+        instruction = random.choice([
+            f"Explique pourquoi un film comme {title} est connu du grand public.",
+            f"Pourquoi {title} est-il autant cité parmi les films {genres.lower()} ?",
+            f"Qu’est-ce qui peut expliquer le succès de {title} ({year}) ?",
+        ])
+        output = (
+            f"{title} ({year}) est un film {genres.lower()} avec {actors}. "
+            f"Il est {appreciation}, ce qui explique qu’il soit souvent recommandé."
+        )
+
+    else:  # vibe
+        instruction = random.choice([
+            f"Décris l’ambiance générale d’un film {genres.lower()} comme {title}.",
+            f"Quel type d’ambiance peut-on attendre d’un film {genres.lower()} tel que {title} ?",
+            f"Parle-moi de l’atmosphère d’un film {genres.lower()} sorti en {year}.",
+        ])
+        output = (
+            f"{title} est un film {genres.lower()} sorti en {year} avec {actors}. "
+            f"L’ambiance correspond bien à ce qu’on attend d’un film de ce genre."
+        )
+
 
     instructions.append(
         {
